@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -69,6 +70,7 @@ func Register()gin.HandlerFunc{
 			c.JSON(http.StatusInternalServerError, gin.H{"error":"this email already exists"})
 		}
 
+		// create User Object
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.ID = primitive.NewObjectID()
@@ -76,10 +78,27 @@ func Register()gin.HandlerFunc{
 		token, refreshToken, _ := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *&user.User_id)
 		user.Token = &token
 		user.Refresh_token = &refreshToken
+
+		// insert User into database
+		resultInsertNumber, insertErr := userCollection.InsertOne(ctx, user)
+		if insertErr != nil {
+			msg := fmt.Sprintf("user profile no created")
+			c.JSON(http.StatusInternalServerError, gin.H{"500 error":msg})
+			return
+		}
+		defer cancel()
+		c.JSON(http.StatusOK, resultInsertNumber)
 	}
 }
 
-func Login()
+// Login function
+func Login() gin.HandlerFunc{
+	return func(c *gin.Context){
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var user models.User
+		var foundUser models.User
+	}
+}
 
 func GetUsers()
 
@@ -94,7 +113,7 @@ func GetUser() gin.HandlerFunc{
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 
 		var user models.User
-		err := userCollection.FindOne(ctx, bson.M{"user_id":userId}).Decode(&user)
+		err := userCollection.FindOne(ctx, bson.M{"user_id":userID}).Decode(&user)
 		// Decode json data type into readable golang data
 		defer cancel()
 		if err != nil {
