@@ -26,7 +26,7 @@ var validate = validator.New()
 // Setup Functions defined in userRouter
 
 func HashPassword(password string) string {
-	bcrypt.GenerateFromPassword([]byte(password), 14)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -69,7 +69,7 @@ func Register()gin.HandlerFunc{
 		}
 		password := HashPassword(*user.Password)
 		user.Password = &password
-		// count, err := userCollection.CountDocuments(ctx, bson.M{"company":user.Company})
+		// count, err = userCollection.CountDocuments(ctx, bson.M{"company":user.Company})
 		// defer cancel()
 		// if err != nil {
 		// 	log.Panic(err)
@@ -141,8 +141,8 @@ func Login() gin.HandlerFunc{
 
 func GetUsers() gin.HandlerFunc{
 	return func(ctx *gin.Context) {
-		helper.CheckUserType(c, "SADMIN"); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}),
+		if err := helper.CheckUserType(c, "SADMIN"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
@@ -158,19 +158,28 @@ func GetUsers() gin.HandlerFunc{
 		startIndex := (page -1) * recordPerPage
 		startIndex, err = strconv.Atoi(c.Query("startindex"))
 
-		matchStage := bson.D{"$match", bson.D{{}}}
-		groupStage := bson.D{"$group", bson.D{
-			{"_id", bson.D{{"_id", "null"}},
-			{"total_count", bson.D{{"$sum", 1}}},
-			{"data", bson..D{{"$push", "$$ROOT"}}},
-		}}}
+		matchStage := bson.D{{Key: "$match", Value: bson.D{{}}}}
+		groupStage := bson.D{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: bson.D{{Key: "_id", Value: "null"}}}, 
+			{Key: "total_count", Value: bson.D{{Key: "$sum", Value: 1}}}, 
+			{Key: "data", Value: bson.D{{Key: "$push", Value: "$$ROOT"}}}}}}
 		projectStage := bson.D{
-			{"$project", bson.D{
-				{"_id", 0},
-				{"total_count", 1},
-				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
-			}}
+			{Key: "$project", Value: bson.D{
+				{Key: "_id", Value: 0},
+				{Key: "total_count", Value: 1},
+				{Key: "user_items", Value: bson.D{{Key: "$slice", Value: []interface{}{"$data", startIndex, recordPerPage}}}},}}}
+		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+			matchStage, groupStage, projectStage
+		})
+		defer cancel()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error":"error while listing items"})
 		}
+		var allusers []bson.M
+		if err = result.All(ctx, &allusers); err != nil {
+			log.Fatal(err)
+		}
+		c.JSON(http.StatusOK, allusers[0])
 	}
 }
 
